@@ -1,0 +1,166 @@
+#!/bin/sh
+
+SELF="$(basename "$0")"
+AUTOSKEL_DIR="$(cd "$(dirname "$0")"; pwd)"
+
+print_usage() {
+	echo "usage: $0 [-p PACKAGE] [-t TARNAME] [-b REPORT] [-u URL] [--] dir"
+	echo "       $0 --help"
+}
+
+print_help() {
+	print_usage
+	cat <<-EOF
+	
+	Options:
+	    -p PACKAGE, --package PACKAGE       The full package name of the project.
+	                                        [Default: the directory name.]
+	    -t TARNAME, --tar-name TARNAME      The name of the generated tarball (and
+	                                        directory in the tarball all files are
+	                                        located. [Default: the directory name.]
+	    -b REPORT, --bug-report REPORT      Typically, this is an email address or
+	                                        URL to a bug management web page.
+	                                        [Default: none]
+	    -u URL, --url URL                   The official URL of the package.
+	                                        [Default: none]
+	EOF
+}
+
+ac_quote() {
+	echo "$@" | sed \
+		-e 's/[[]/@<:@/g' -e 's/[]]/@:>@/g' \
+		-e 's/\$/@S|@/g' -e 's/#/@%:@/g' \
+		-e 's/(/@{:@/g' -e s'/)/@:}@/g' |
+	sed 's/^.*$/[&]/'
+}
+
+gen_target() {
+	echo "$1" | sed -e 's|/_|/.|g' -e 's|^_|.|'
+}
+
+f_package=false
+f_tarball=false
+f_report=false
+f_url=false
+while test $# -gt 0; do
+	case "$1" in
+		-p|--package)
+			if test $# -lt 2; then
+				echo "$SELF: $1 requires an argument" >&2
+				print_usage >&2
+				exit 1
+			fi
+			f_package=true
+			package="$2"
+			shift 2
+			;;
+		-t|--tar-name)
+			if test $# -lt 2; then
+				echo "$SELF: $1 requires an argument" >&2
+				print_usage >&2
+				exit 1
+			fi
+			f_tarball=true
+			tarball="$2"
+			shift 2
+			;;
+		-b|--bug-report)
+			if test $# -lt 2; then
+				echo "$SELF: $1 requires an argument" >&2
+				print_usage >&2
+				exit 1
+			fi
+			f_report=true
+			report="$2"
+			shift 2
+			;;
+		-u|--url)
+			if test $# -lt 2; then
+				echo "$SELF: $1 requires an argument" >&2
+				print_usage >&2
+				exit 1
+			fi
+			f_url=true
+			url="$2"
+			shift 2
+			;;
+		--)
+			break
+			;;
+		-h|--help)
+			print_help
+			exit 0
+			;;
+		-*)
+			echo "$SELF: unknown option: $1" >&2
+			print_usage >&2
+			exit 1
+			;;
+		*)
+			break
+			;;
+	esac
+done
+
+if test $# -eq 0; then
+	echo "$SELF: expecting directory to initialize" >&2
+	print_usage >&2
+	exit 1
+fi
+directory="$1"
+shift
+
+if test $# -gt 0; then
+	echo "$SELF: found unexpected cruft: $*" >&2
+	print_usage >&2
+	exit 1
+fi
+
+if test -e "$directory"; then
+	echo "$SELF: directory already exists: $directory" >&2
+	exit 1
+fi
+
+if ! $f_package; then
+	package="$directory"
+fi
+ac_quoted_package="$(ac_quote "$package")"
+
+if ! $f_tarball; then
+	tarball="$(echo "$package" | sed -e 's/GNU //' -e 's/[^a-zA-Z0-9_]\{1,\}/-/' | tr 'A-Z' 'a-z')"
+fi
+ac_quoted_tarball="$(ac_quote "$tarball")"
+
+if $f_report; then
+	ac_quoted_report="$(ac_quote "$report")"
+else
+	ac_quoted_report=""
+fi
+
+if $f_url; then
+	ac_quoted_url="$(ac_quote "$url")"
+else
+	ac_quoted_url=""
+fi
+
+mkdir -p "$directory"
+(cd "$AUTOSKEL_DIR"; find skel -mindepth 1 -not -name '.*' | cut -b 6-) | while read; do
+	src="$AUTOSKEL_DIR/skel/$REPLY"
+	dst="$directory/$(gen_target "$REPLY")"
+	if test -d "$src"; then
+		mkdir "$dst"
+	else
+		sed \
+			-e "s#@@PACKAGE@@#$package#g" \
+			-e "s#@@AC_QUOTED_PACKAGE@@#$ac_quoted_package#g" \
+			-e "s#@@TARNAME@@#$tarball#g" \
+			-e "s#@@AC_QUOTED_TARNAME@@#$ac_quoted_tarball#g" \
+			-e "s#@@AC_QUOTED_BUG_REPORT@@#$ac_quoted_report#g" \
+			-e "s#@@AC_QUOTED_URL@@#$ac_quoted_url#g" \
+			< "$src" > "$dst"
+		if test -x "$src"; then
+			chmod +x "$dst"
+		fi
+	fi
+done
+(cd "$directory"; git init && git add . && git commit -am 'Initial Skeleton')
