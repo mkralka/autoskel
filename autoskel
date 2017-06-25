@@ -17,7 +17,7 @@ print_help() {
 	                                        [Default: the directory name.]
 	    -t TARNAME, --tar-name TARNAME      The name of the generated tarball (and
 	                                        directory in the tarball all files are
-	                                        located. [Default: the directory name.]
+	                                        located. [Default: the package name.]
 	    -b REPORT, --bug-report REPORT      Typically, this is an email address or
 	                                        URL to a bug management web page.
 	                                        [Default: none]
