@@ -4,7 +4,7 @@ SELF="$(basename "$0")"
 AUTOSKEL_DIR="$(cd "$(dirname "$0")"; pwd)"
 
 print_usage() {
-	echo "usage: $0 [-p PACKAGE] [-t TARNAME] [-b REPORT] [-u URL] [--] dir"
+	echo "usage: $0 [-n] [-p PACKAGE] [-t TARNAME] [-g ACC[/REPO]] [-b REPORT] [-u URL] [--] dir"
 	echo "       $0 --help"
 }
 
@@ -19,10 +19,21 @@ print_help() {
 	                                        directory in the tarball all files are
 	                                        located. [Default: the package name.]
 	    -b REPORT, --bug-report REPORT      Typically, this is an email address or
-	                                        URL to a bug management web page.
+	                                        URL to a bug management web page. Will
+	                                        override report location from -g.
 	                                        [Default: none]
-	    -u URL, --url URL                   The official URL of the package.
+	    -u URL, --url URL                   The official URL of the package. Will
+	                                        override URL from -g.
 	                                        [Default: none]
+	    -g ACC[/REPO], --github ACC[/REPO]  Set bug report and URL to a value
+	                                        suitable for a github project. ACC is
+	                                        the account and REPO is the repository
+	                                        name under which the main repo is
+	                                        maintained. REPO, if omitted, defaults
+	                                        to the project name.
+	                                        [Default: none]
+	    -n, --dry-run                       Dry run. Describe what would be done
+	                                        without doing it.
 	EOF
 }
 
@@ -42,6 +53,8 @@ f_package=false
 f_tarball=false
 f_report=false
 f_url=false
+f_github=false
+f_dryrun=false
 while test $# -gt 0; do
 	case "$1" in
 		-p|--package)
@@ -84,6 +97,20 @@ while test $# -gt 0; do
 			url="$2"
 			shift 2
 			;;
+		-g|--github)
+			if test $# -lt 2; then
+				echo "$SELF: $1 requires an argument" >&2
+				print_usage >&2
+				exit 1
+			fi
+			f_github=true
+			github="$2"
+			shift 2
+			;;
+		-n|--dry-run)
+			f_dryrun=true
+			shift 1
+			;;
 		--)
 			break
 			;;
@@ -121,6 +148,7 @@ if test -e "$directory"; then
 	exit 1
 fi
 
+
 if ! $f_package; then
 	package="$directory"
 fi
@@ -130,6 +158,27 @@ if ! $f_tarball; then
 	tarball="$(echo "$package" | sed -e 's/GNU //' -e 's/[^a-zA-Z0-9_]\{1,\}/-/' | tr 'A-Z' 'a-z')"
 fi
 ac_quoted_tarball="$(ac_quote "$tarball")"
+
+if $f_github; then
+	if echo "$github" | grep -E "^[^/]+/[^/]+$" > /dev/null 2>&1; then
+		github_account="$(echo "$github" | cut -d/ -f1)"
+		github_repo="$(echo "$github" | cut -d/ -f2)"
+	elif echo "$github" | grep -E "^[^/]+$" > /dev/null 2>&1; then
+		github_account="$github"
+		github_repo="$package"
+	else
+		echo "$SELF: malformed github specification: '$github'" >&2
+		exit 1
+	fi
+	if ! $f_report; then
+		f_report=true
+		report="https://github.com/$github_account/$github_repo/issues"
+	fi
+	if ! $f_url; then
+		f_url=true
+		url="https://github.com/$github_account/$github_repo"
+	fi
+fi
 
 if $f_report; then
 	ac_quoted_report="$(ac_quote "$report")"
@@ -143,6 +192,24 @@ else
 	ac_quoted_url=""
 fi
 
+if $f_dryrun; then
+	echo "Would have created autotools skeleton..."
+else
+	echo "Creating autotools skeleton..."
+fi
+echo "Location:     $directory"
+echo "Package:      $package"
+echo "Tarball Root: $tarball"
+if $f_report; then
+	echo "Bug Report:   $report"
+fi
+if $f_url; then
+	echo "URL:          $url"
+fi
+
+if $f_dryrun; then
+	exit 0
+fi
 mkdir -p "$directory"
 (cd "$AUTOSKEL_DIR"; find skel -mindepth 1 -not -name '.*' | cut -b 6-) | while read; do
 	src="$AUTOSKEL_DIR/skel/$REPLY"
